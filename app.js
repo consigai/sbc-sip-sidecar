@@ -224,8 +224,20 @@ srf.on('connect', (err, hp, version, localHostports) => {
     cleanSbcAddresses();
   }, interval);
 
-  /* start regbot */
-  require('./lib/sip-trunk-register')(logger, srf);
+  /**
+   * JAMBONES_REGBOT_DISABLED: skip carrier SIP registration on this instance.
+   *
+   * In split-SBC architectures where inbound and outbound pools run on
+   * separate tasks with different public IPs, carrier registration must
+   * happen from the outbound pool so the registered IP matches the one
+   * used for outbound INVITEs.  Set this to 'true' on the inbound pool's
+   * sbc-sip-sidecar to prevent it from claiming regbot responsibility.
+   */
+  if (process.env.JAMBONES_REGBOT_DISABLED === 'true') {
+    logger.info('JAMBONES_REGBOT_DISABLED is set, skipping regbot initialization');
+  } else {
+    require('./lib/sip-trunk-register')(logger, srf);
+  }
   // Start Options bot
   require('./lib/sip-trunk-options-ping')(logger, srf);
 });
