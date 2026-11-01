@@ -4,7 +4,7 @@ on:
     branches: [consig-*]
 jobs:
   call-workflow-passing-data:
-    uses: consigai/sbc-sip-sidecar/.github/workflows/cdk-deploy.yml@consig-0.9.5-8a
+    uses: ./.github/workflows/cdk-deploy.yml
     permissions:
       actions: write
       contents: read
