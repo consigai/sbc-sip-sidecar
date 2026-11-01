@@ -35,6 +35,11 @@ assert.ok(JAMBONES_TIME_SERIES_HOST, 'missing JAMBONES_TIME_SERIES_HOST env var'
 
 const CIDRMatcher = require('cidr-matcher');
 const logger = require('pino')({ level: JAMBONES_LOGLEVEL || 'info' });
+/* consigai/consig-cdk-jam#155: defense in depth only, as in sbc-inbound/sbc-outbound (consigai/outbound#795).
+ This container is essential, so exiting on a stray rejection takes the whole SBC task down. Fix the source too. */
+process.on('unhandledRejection', (reason) => {
+  logger.error({err: reason}, 'unhandledRejection: logged and ignored, process kept alive');
+});
 const Srf = require('drachtio-srf');
 const srf = new Srf();
 const StatsCollector = require('@jambonz/stats-collector');
@@ -42,7 +47,7 @@ const stats = new StatsCollector(logger);
 const { initLocals, rejectIpv4, checkCache, checkAccountLimits } = require('./lib/middleware');
 const responseTime = require('drachtio-mw-response-time');
 const regParser = require('drachtio-mw-registration-parser');
-const Registrar = require('@jambonz/mw-registrar');
+const Registrar = require('./lib/registrar');
 const digestChallenge = require('@jambonz/digest-utils');
 const debug = require('debug')('jambonz:sbc-registrar');
 const {
@@ -90,6 +95,8 @@ const {
   createEphemeralGateway,
   deleteEphemeralGateway
 } = require('@jambonz/realtimedb-helpers')({}, logger);
+/* consigai/consig-cdk-jam#155: reconnect to the new primary after a Valkey failover */
+require('./lib/redis-failover').followFailover(client, logger);
 
 const interval = SBC_PUBLIC_ADDRESS_KEEP_ALIVE_IN_MILISECOND || 900000; // Default 15 minutes
 
@@ -278,9 +285,13 @@ srf.options(require('./lib/options')({srf, logger}));
 require('./lib/cli/runtime-config').initialize(srf.locals, logger);
 
 setInterval(async() => {
-  const count = await srf.locals.registrar.getCountOfUsers();
-  debug(`count of registered users: ${count}`);
-  stats.gauge('sbc.users.count', parseInt(count));
+  try {
+    const count = await srf.locals.registrar.getCountOfUsers();
+    debug(`count of registered users: ${count}`);
+    stats.gauge('sbc.users.count', parseInt(count));
+  } catch (err) {
+    logger.error({err}, 'error reading the count of registered users');
+  }
 }, 30000);
 
 module.exports = { srf, logger };
